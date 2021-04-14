@@ -1,3 +1,7 @@
+#### 前言
+
+我们写的Java代码到编译成Class文件，最后被加载到JVM中，经历了哪些过程呢？今天我们就来讲讲Java的类加载机制。
+
 #### 字节码
 
 Java有一个很出名的口号：“Write Once, Run Anywhere”，他是如何实现这句口号的呢，这其中就离不开字节码。
@@ -65,7 +69,7 @@ public static int age = 10; // 初始化阶段完成之后age的值为10
 
 #### 类加载器
 
-类加载器分为四种
+##### 分类
 
 ```text
 1.Bootstrap ClassLoader 负责加载$JAVA_HOME中 jre/lib/rt.jar 里所有的class或 Xbootclassoath选项指定的jar包。由C++实现，不是ClassLoader子类。 
@@ -74,7 +78,63 @@ public static int age = 10; // 初始化阶段完成之后age的值为10
 4.Custom ClassLoader 通过java.lang.ClassLoader的子类自定义加载class，属于应用程序根据 自身需要自定义的ClassLoader，如tomcat、jboss都会根据j2ee规范自行实现ClassLoader。
 ```
 
+##### 双亲委派机制
 
+1. 检查某个类是否已经加载
+
+   自底向上，从Custom ClassLoader到BootStrap ClassLoader逐层检查，只要某个Classloader已加载，就视为已加载此类，保证此类只所有ClassLoader加载一次。
+
+2. 加载的顺序
+
+   自顶向下，也就是由上层来逐层尝试加载此类。
+
+   ![image](http://www.zhaojun.ink/upload/2021/04/image-823326c820d24375aac31425bcf7abdb.png)
+
+如果一个类加载器收到了加载类的请求，它会先把请求委托给上层加载器去完成，上层加载器又会委托上上层加载器，一直到最顶层的类加载器；如果上层加载器无法完成类的加载工作时，当前类加载器才会尝试自己去加载这个类。
+
+ClassLoader 类中可以看到类加载的逻辑
+
+```java
+ protected Class<?> loadClass(String name, boolean resolve)
+        throws ClassNotFoundException
+    {
+        synchronized (getClassLoadingLock(name)) {
+            // 首先, 检查类是否已经加载
+            Class<?> c = findLoadedClass(name);
+            if (c == null) {
+                long t0 = System.nanoTime();
+                try {
+                    if (parent != null) {
+                        //父加载器不为空，则交给父类加载器加载
+                        c = parent.loadClass(name, false);
+                    } else {
+                        //父加载器为空，由BootstrapClassLoader类加载器加载
+                        c = findBootstrapClassOrNull(name);
+                    }
+                } catch (ClassNotFoundException e) {
+                    // ClassNotFoundException thrown if class not found
+                    // from the non-null parent class loader
+                }
+
+                if (c == null) {
+                    // If still not found, then invoke findClass in order
+                    // to find the class.
+                    long t1 = System.nanoTime();
+                    c = findClass(name);
+
+                    // this is the defining class loader; record the stats
+                    sun.misc.PerfCounter.getParentDelegationTime().addTime(t1 - t0);
+                    sun.misc.PerfCounter.getFindClassTime().addElapsedTimeFrom(t1);
+                    sun.misc.PerfCounter.getFindClasses().increment();
+                }
+            }
+            if (resolve) {
+                resolveClass(c);
+            }
+            return c;
+        }
+    }
+```
 
 
 
